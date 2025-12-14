@@ -1023,6 +1023,98 @@ def sweep_conservatism(args) -> None:
     print(f"{'='*110}")
 
 
+def run_assistive_demo(args) -> None:
+    """Run assistive navigation safety demo."""
+    import time
+    from wooedge.envs.assistive_nav import AssistiveNavEnv, AssistiveNavConfig, AssistiveAction
+
+    # Import the demo module functions
+    import sys
+    import os
+    examples_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'examples')
+    sys.path.insert(0, examples_path)
+    from assistive_gate_demo import (
+        AssistiveDecisionSafety, AssistiveSafetyConfig,
+        run_episode, simple_navigation_policy
+    )
+
+    print(f"\n{'='*60}")
+    print("Assistive Navigation Safety Demo")
+    print(f"{'='*60}")
+    print("Scenario: Smart cane / wheelchair guidance system")
+    print("- Fork corridor with safe exit (G) and hazard/stairs (H)")
+    print("- DecisionSafety gates irreversible commitments")
+    print(f"{'='*60}\n")
+
+    # Show environment layout
+    env = AssistiveNavEnv(AssistiveNavConfig(seed=0))
+    print("Environment layout:")
+    print(env.render_ascii())
+    print(f"\nGoal: {env.goal_pos}, Hazard: {env.hazard_pos}")
+    print()
+
+    # Run benchmark
+    n_seeds = args.seeds
+    print(f"Running benchmark with {n_seeds} seeds...")
+    print(f"{'='*60}\n")
+
+    start_time = time.time()
+
+    gated_results = {"success": 0, "hazard": 0, "steps": [], "scans": []}
+    ungated_results = {"success": 0, "hazard": 0, "steps": [], "scans": []}
+
+    for seed in range(n_seeds):
+        # Gated run with naive policy (to show gating value)
+        env = AssistiveNavEnv(AssistiveNavConfig(seed=seed))
+        safety = AssistiveDecisionSafety(env)
+        result = run_episode(env, safety, gated=True, verbose=False, use_naive_policy=True)
+
+        gated_results["success"] += result["success"]
+        gated_results["hazard"] += result["hazard"]
+        gated_results["steps"].append(result["steps"])
+        gated_results["scans"].append(result["scans"])
+
+        # Ungated run with naive policy (shows hazard hits without gating)
+        env = AssistiveNavEnv(AssistiveNavConfig(seed=seed))
+        safety = AssistiveDecisionSafety(env)
+        result = run_episode(env, safety, gated=False, verbose=False, use_naive_policy=True)
+
+        ungated_results["success"] += result["success"]
+        ungated_results["hazard"] += result["hazard"]
+        ungated_results["steps"].append(result["steps"])
+        ungated_results["scans"].append(result["scans"])
+
+    runtime = time.time() - start_time
+
+    # Print results
+    print(f"{'Mode':<12} {'Success%':>10} {'Hazard%':>10} {'Avg Steps':>12}")
+    print("-" * 50)
+
+    gated_success = gated_results["success"] / n_seeds * 100
+    gated_hazard = gated_results["hazard"] / n_seeds * 100
+    gated_steps = np.mean(gated_results["steps"])
+
+    ungated_success = ungated_results["success"] / n_seeds * 100
+    ungated_hazard = ungated_results["hazard"] / n_seeds * 100
+    ungated_steps = np.mean(ungated_results["steps"])
+
+    print(f"{'Gated':<12} {gated_success:>9.1f}% {gated_hazard:>9.1f}% {gated_steps:>12.1f}")
+    print(f"{'Ungated':<12} {ungated_success:>9.1f}% {ungated_hazard:>9.1f}% {ungated_steps:>12.1f}")
+    print("-" * 50)
+    print(f"Runtime: {runtime:.1f}s")
+
+    # Safety comparison
+    hazard_reduction = ungated_hazard - gated_hazard
+    print(f"\nSafety improvement: {hazard_reduction:+.1f}pp fewer hazard incidents")
+
+    # Targets
+    print(f"\nTargets:")
+    print(f"  Gated safer than ungated: {hazard_reduction:+.1f}pp " +
+          ("OK" if hazard_reduction >= 0 else "FAIL"))
+    print(f"  Runtime < 60s: {runtime:.1f}s " + ("OK" if runtime < 60 else "FAIL"))
+    print(f"{'='*60}")
+
+
 def main():
     """Main entry point for CLI."""
     parser = argparse.ArgumentParser(
@@ -1156,6 +1248,14 @@ Examples:
     demo_proof_parser = subparsers.add_parser("demo_proof",
                                                help="Run flagship fork-trap benchmark (symmetric_fork_trap, seeds 0-20)")
 
+    # Assistive navigation demo
+    assistive_parser = subparsers.add_parser("assistive_demo",
+                                              help="Run assistive navigation safety demo (smart cane/wheelchair)")
+    assistive_parser.add_argument("--seeds", type=int, default=20,
+                                  help="Number of seeds for benchmark")
+    assistive_parser.add_argument("--verbose", action="store_true",
+                                  help="Show detailed episode output")
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -1192,6 +1292,9 @@ Examples:
             maze_type="symmetric_fork_trap"
         )
         verify_separation(proof_args)
+    elif args.command == "assistive_demo":
+        # Run assistive navigation demo
+        run_assistive_demo(args)
     else:
         parser.print_help()
 
