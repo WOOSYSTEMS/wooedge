@@ -1152,6 +1152,10 @@ Examples:
     stats_parser.add_argument("--slip-prob", type=float, default=0.15,
                              help="Slip probability")
 
+    # Demo proof command - flagship benchmark
+    demo_proof_parser = subparsers.add_parser("demo_proof",
+                                               help="Run flagship fork-trap benchmark (symmetric_fork_trap, seeds 0-20)")
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -1172,6 +1176,22 @@ Examples:
         sweep_commit_gate(args)
     elif args.command == "stats":
         run_stats(args)
+    elif args.command == "demo_proof":
+        # Flagship fork-trap benchmark with fixed parameters
+        print("\n" + "="*70)
+        print("WOOEdge Flagship Fork-Trap Benchmark")
+        print("="*70)
+        print("This demonstrates uncertainty-gated MPC on the symmetric_fork_trap maze.")
+        print("The commit gate prevents premature commitment when belief entropy is high.")
+        print("="*70 + "\n")
+        # Create args for verify_separation with fixed parameters
+        from types import SimpleNamespace
+        proof_args = SimpleNamespace(
+            seeds=[0, 20],
+            steps=120,
+            maze_type="symmetric_fork_trap"
+        )
+        verify_separation(proof_args)
     else:
         parser.print_help()
 
