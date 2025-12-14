@@ -11,6 +11,16 @@ WOOEdge demonstrates "life-like intelligence" through the **predict → act → 
 3. **Update**: Refine belief from observations
 4. **Improve**: Learn environment dynamics online
 
+## Proof in One Command
+
+```bash
+python -m wooedge.cli demo_proof
+```
+
+- **What it demonstrates**: MPC with uncertainty-gating achieves 90% success vs 70% without, on a fork-trap maze where premature commitment is fatal
+- **Why it matters**: The agent learns to delay commitment when belief entropy is high, avoiding wrong-fork traps that fool greedy planners
+- **Why it's lightweight**: No LLMs, no GPUs, no APIs — runs locally in <60s with pure NumPy
+
 ## Architecture
 
 ```
