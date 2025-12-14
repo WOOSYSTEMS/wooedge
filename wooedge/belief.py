@@ -392,6 +392,9 @@ class BeliefPredictor:
         action = Action(action)
         dy, dx = ACTION_DELTAS[action]
 
+        # Derive grid size from belief array shape (backwards compatible)
+        belief_size = current_belief.shape[0]
+
         # Sample positions from current belief
         flat_belief = current_belief.flatten()
         flat_belief = flat_belief / (np.sum(flat_belief) + 1e-10)
@@ -401,7 +404,7 @@ class BeliefPredictor:
 
         for _ in range(n_samples):
             idx = rng.choice(len(flat_belief), p=flat_belief)
-            y, x = idx // self.grid_size, idx % self.grid_size
+            y, x = idx // belief_size, idx % belief_size
 
             # Apply action with slip
             if action != Action.STAY and rng.random() < self.config.slip_prob:
@@ -412,10 +415,12 @@ class BeliefPredictor:
 
             new_y, new_x = y + dy_new, x + dx_new
 
-            # Check validity
-            if (0 <= new_y < self.grid_size and
-                0 <= new_x < self.grid_size and
-                self.grid[new_y, new_x] != 1):
+            # Check validity using belief size and grid (if available)
+            valid = (0 <= new_y < belief_size and 0 <= new_x < belief_size)
+            if valid and new_y < self.grid.shape[0] and new_x < self.grid.shape[1]:
+                valid = self.grid[new_y, new_x] != 1
+
+            if valid:
                 new_belief[new_y, new_x] += 1
             else:
                 new_belief[y, x] += 1

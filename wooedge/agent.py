@@ -24,7 +24,7 @@ from .planner import MPCPlanner, GreedyPlanner, create_planner, PlannerConfig
 class AgentConfig:
     """Configuration for the WOOEdge agent."""
     # Belief configuration
-    n_particles: int = 1000
+    n_particles: int = 500  # Default (backwards compatible)
     belief_sensor_noise_std: float = 1.0
     belief_resample_threshold: float = 0.3
 
@@ -34,7 +34,7 @@ class AgentConfig:
 
     # Planner configuration
     planner_type: str = "mpc"  # "mpc", "mpc_no_uncert", "greedy", or "infogain"
-    planning_horizon: int = 12
+    planning_horizon: int = 10  # Default (backwards compatible)
     n_samples: int = 150
     n_belief_samples: int = 30  # Number of belief samples for MPC rollouts
     goal_weight: float = 1.0
