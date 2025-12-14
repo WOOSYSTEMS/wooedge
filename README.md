@@ -326,6 +326,30 @@ print(f"Steps: {results['steps']}")
 print(f"Final entropy: {results['final_entropy']:.4f}")
 ```
 
+### DecisionSafety API
+
+A reusable module for checking whether actions are safe to commit based on belief uncertainty:
+
+```python
+from wooedge.env import GridWorld, EnvConfig
+from wooedge.safety import DecisionSafety
+
+env = GridWorld(EnvConfig(maze_type="symmetric_fork_trap", seed=42))
+safety = DecisionSafety(env)
+safety.reset(seed=42)
+
+obs = env.reset()
+safety.observe(obs)
+
+result = safety.propose(action=1)  # DOWN
+if result["decision"] == "DELAY":
+    print(f"Unsafe: {result['reason']}")
+```
+
+Returns `{"decision": "ALLOW"|"DELAY"|"ABORT", "entropy": float, "reason": str, ...}`.
+
+See `examples/safety_demo.py` for a complete example.
+
 ## Dependencies
 
 **Required:**
