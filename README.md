@@ -108,4 +108,6 @@ wooedge/
 
 ## License
 
-MIT
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Copyright © 2025 Nuwan Navindu Ambagahawatte
