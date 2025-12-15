@@ -1127,6 +1127,69 @@ def run_replay_csv(args) -> None:
     run_replay(args.file, delay=args.delay, verbose=not args.quiet)
 
 
+def run_replay_serial(args) -> None:
+    """Run live serial replay through safety checker."""
+    import time
+
+    # Import serial replay and safety checker
+    from wooedge.io.serial_replay import SerialReplaySource
+    examples_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'examples')
+    sys.path.insert(0, examples_path)
+    from csv_replay_demo import ReplaySafetyChecker
+
+    ACTION_NAMES = ["FORWARD", "LEFT", "RIGHT", "SCAN"]
+
+    print("=" * 60)
+    print("Serial Replay Safety Demo")
+    print("=" * 60)
+    print(f"Port: {args.port}")
+    print(f"Baud: {args.baud}")
+    print(f"Delay: {args.delay}s per step")
+    print("=" * 60)
+    print("Waiting for serial data... (Ctrl+C to stop)")
+    print()
+
+    # Create safety checker
+    safety = ReplaySafetyChecker(
+        entropy_threshold=0.4,
+        hazard_threshold=0.6
+    )
+    safety.reset()
+
+    # Header
+    verbose = not args.quiet
+    print(f"{'Step':<6} {'Front':<6} {'Left':<6} {'Right':<6} {'Hazard':<8} {'Entropy':<8} {'Decision':<8} {'Action'}")
+    print("-" * 70)
+
+    try:
+        source = SerialReplaySource(args.port, baud=args.baud)
+        for obs in source:
+            safety.observe(obs)
+
+            # Propose FORWARD action
+            result = safety.propose(action=0)
+            suggested = ACTION_NAMES[result["suggested_action"]]
+
+            print(f"{obs.timestep:<6} {obs.front_dist:<6} {obs.left_dist:<6} {obs.right_dist:<6} "
+                  f"{obs.hazard_hint:<8.2f} {result['entropy']:<8.2f} {result['decision']:<8} {suggested}")
+
+            if verbose and result["decision"] != "ALLOW":
+                print(f"       Reason: {result['reason']}")
+
+            if args.delay > 0:
+                time.sleep(args.delay)
+
+    except KeyboardInterrupt:
+        print()
+    except Exception as e:
+        print(f"\nError: {e}")
+        sys.exit(1)
+
+    print("-" * 70)
+    print(f"Replay stopped. Final entropy: {safety.get_entropy():.3f}")
+    print("=" * 60)
+
+
 def main():
     """Main entry point for CLI."""
     parser = argparse.ArgumentParser(
@@ -1280,6 +1343,18 @@ Examples:
     replay_parser.add_argument("--quiet", "-q", action="store_true",
                                help="Minimal output (no reasons)")
 
+    # Serial replay command
+    serial_parser = subparsers.add_parser("replay_serial",
+                                           help="Replay live serial sensor data through safety checker")
+    serial_parser.add_argument("--port", "-p", type=str, required=True,
+                               help="Serial port (e.g., /dev/cu.usbserial-10)")
+    serial_parser.add_argument("--baud", "-b", type=int, default=115200,
+                               help="Baud rate (default 115200)")
+    serial_parser.add_argument("--delay", "-d", type=float, default=0.0,
+                               help="Delay between steps in seconds")
+    serial_parser.add_argument("--quiet", "-q", action="store_true",
+                               help="Minimal output (no reasons)")
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -1322,6 +1397,9 @@ Examples:
     elif args.command == "replay_csv":
         # Run CSV replay
         run_replay_csv(args)
+    elif args.command == "replay_serial":
+        # Run serial replay
+        run_replay_serial(args)
     else:
         parser.print_help()
 
