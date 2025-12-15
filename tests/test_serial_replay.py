@@ -16,61 +16,109 @@ from wooedge.io.csv_replay import ReplayObservation
 class TestParseLine:
     """Tests for parse_line function."""
 
-    def test_parse_valid_line(self):
-        """Test parsing a valid sensor line."""
-        obs = parse_line("3,2,4,0.5", timestep=0)
+    # 4-field format tests (front,left,right,hazard)
+
+    def test_parse_4field_format(self):
+        """Test parsing 4-field format: front,left,right,hazard."""
+        obs = parse_line("3,2,4,0.5")
         assert obs is not None
         assert obs.front_dist == 3
         assert obs.left_dist == 2
         assert obs.right_dist == 4
         assert obs.hazard_hint == 0.5
-        assert obs.timestep == 0
+        assert obs.timestep == 0  # Default when not provided
 
-    def test_parse_line_with_whitespace(self):
-        """Test parsing line with leading/trailing whitespace."""
+    def test_parse_4field_with_explicit_timestep(self):
+        """Test 4-field format with explicit timestep argument."""
+        obs = parse_line("3,2,4,0.5", timestep=5)
+        assert obs is not None
+        assert obs.front_dist == 3
+        assert obs.timestep == 5
+
+    def test_parse_4field_with_whitespace(self):
+        """Test parsing 4-field line with leading/trailing whitespace."""
         obs = parse_line("  3,2,4,0.5\n", timestep=1)
         assert obs is not None
         assert obs.front_dist == 3
         assert obs.timestep == 1
 
-    def test_parse_line_with_carriage_return(self):
-        """Test parsing line with carriage return."""
+    def test_parse_4field_with_carriage_return(self):
+        """Test parsing 4-field line with carriage return."""
         obs = parse_line("3,2,4,0.5\r\n", timestep=2)
         assert obs is not None
         assert obs.front_dist == 3
 
+    # 5-field format tests (timestep,front,left,right,hazard)
+
+    def test_parse_5field_format(self):
+        """Test parsing 5-field format: timestep,front,left,right,hazard."""
+        obs = parse_line("10,3,2,4,0.5")
+        assert obs is not None
+        assert obs.timestep == 10
+        assert obs.front_dist == 3
+        assert obs.left_dist == 2
+        assert obs.right_dist == 4
+        assert obs.hazard_hint == 0.5
+
+    def test_parse_5field_ignores_timestep_arg(self):
+        """Test that 5-field format uses line timestep, not argument."""
+        obs = parse_line("10,3,2,4,0.5", timestep=99)
+        assert obs is not None
+        assert obs.timestep == 10  # From line, not argument
+
+    def test_parse_5field_with_whitespace(self):
+        """Test parsing 5-field line with whitespace."""
+        obs = parse_line("  5,3,2,4,0.5\n")
+        assert obs is not None
+        assert obs.timestep == 5
+        assert obs.front_dist == 3
+
+    def test_parse_5field_csv_compatible(self):
+        """Test that 5-field format matches CSV schema."""
+        # CSV schema: timestep,front_dist,left_dist,right_dist,hazard_hint
+        obs = parse_line("0,5,3,2,0.12")
+        assert obs is not None
+        assert obs.timestep == 0
+        assert obs.front_dist == 5
+        assert obs.left_dist == 3
+        assert obs.right_dist == 2
+        assert obs.hazard_hint == 0.12
+
+    # Error handling tests
+
     def test_parse_empty_line_returns_none(self):
         """Test that empty line returns None."""
-        assert parse_line("", timestep=0) is None
-        assert parse_line("   ", timestep=0) is None
-        assert parse_line("\n", timestep=0) is None
+        assert parse_line("") is None
+        assert parse_line("   ") is None
+        assert parse_line("\n") is None
 
     def test_parse_incomplete_line_returns_none(self):
         """Test that incomplete line returns None."""
-        assert parse_line("3,2", timestep=0) is None
-        assert parse_line("3,2,4", timestep=0) is None
+        assert parse_line("3,2") is None
+        assert parse_line("3,2,4") is None
 
     def test_parse_malformed_line_returns_none(self):
         """Test that malformed line returns None."""
-        assert parse_line("abc,def,ghi,jkl", timestep=0) is None
-        assert parse_line("3,2,4,abc", timestep=0) is None
-        assert parse_line("not,valid,data,here", timestep=0) is None
+        assert parse_line("abc,def,ghi,jkl") is None
+        assert parse_line("3,2,4,abc") is None
+        assert parse_line("not,valid,data,here") is None
 
     def test_parse_extra_fields_ignored(self):
-        """Test that extra fields are ignored."""
-        obs = parse_line("3,2,4,0.5,extra,fields", timestep=0)
+        """Test that fields beyond 5 are ignored."""
+        obs = parse_line("0,3,2,4,0.5,extra,fields")
         assert obs is not None
+        assert obs.timestep == 0
         assert obs.front_dist == 3
         assert obs.hazard_hint == 0.5
 
     def test_parse_float_distances(self):
-        """Test parsing with float values for distances (truncated to int)."""
-        obs = parse_line("3,2,4,0.5", timestep=0)
+        """Test parsing with integer distances."""
+        obs = parse_line("3,2,4,0.5")
         assert obs is not None
         assert isinstance(obs.front_dist, int)
 
-    def test_timestep_increments(self):
-        """Test that timestep is set correctly."""
+    def test_timestep_from_argument(self):
+        """Test that timestep argument works for 4-field format."""
         obs1 = parse_line("3,2,4,0.5", timestep=0)
         obs2 = parse_line("3,2,4,0.5", timestep=5)
         obs3 = parse_line("3,2,4,0.5", timestep=100)
@@ -215,6 +263,47 @@ class TestSerialReplaySource:
             baudrate=115200,
             timeout=1.0
         )
+
+    @patch('wooedge.io.serial_replay.serial')
+    def test_read_5field_format(self, mock_serial_module):
+        """Test reading 5-field format with embedded timestep."""
+        mock_serial = Mock()
+        mock_serial_module.Serial.return_value = mock_serial
+        mock_serial.is_open = True
+        mock_serial.readline.return_value = b"42,3,2,4,0.5\n"
+
+        source = SerialReplaySource("/dev/ttyUSB0")
+        obs = source.read_one()
+
+        assert obs is not None
+        assert obs.timestep == 42  # From line, not auto-increment
+        assert obs.front_dist == 3
+        assert obs.hazard_hint == 0.5
+
+    @patch('wooedge.io.serial_replay.serial')
+    def test_mixed_formats(self, mock_serial_module):
+        """Test reading mixed 4-field and 5-field formats."""
+        mock_serial = Mock()
+        mock_serial_module.Serial.return_value = mock_serial
+        mock_serial.is_open = True
+        # First 4-field, then 5-field, then 4-field
+        mock_serial.readline.side_effect = [
+            b"3,2,4,0.1\n",      # 4-field, timestep=0
+            b"99,5,4,3,0.2\n",   # 5-field, timestep=99
+            b"1,1,1,0.3\n",      # 4-field, timestep=1
+        ]
+
+        source = SerialReplaySource("/dev/ttyUSB0")
+        obs1 = source.read_one()
+        obs2 = source.read_one()
+        obs3 = source.read_one()
+
+        assert obs1.timestep == 0   # Auto-increment
+        assert obs1.front_dist == 3
+        assert obs2.timestep == 99  # From line
+        assert obs2.front_dist == 5
+        assert obs3.timestep == 2   # Auto-increment continues
+        assert obs3.front_dist == 1
 
 
 class TestSerialReplayCLI:

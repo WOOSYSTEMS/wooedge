@@ -4,8 +4,9 @@ Serial Replay Source
 Reads live sensor data from a serial port and emits observations compatible
 with DecisionSafety.observe(). Enables real-time safety checking.
 
-Line format (no header):
-    front,left,right,hazard
+Supported line formats (no header):
+    front,left,right,hazard           (4 fields, timestep auto-incremented)
+    timestep,front,left,right,hazard  (5 fields, timestep from line)
 
 Example:
     3,2,4,0.1
@@ -23,13 +24,17 @@ except ImportError:
     SERIAL_AVAILABLE = False
 
 
-def parse_line(line: str, timestep: int) -> Optional[ReplayObservation]:
+def parse_line(line: str, timestep: Optional[int] = None) -> Optional[ReplayObservation]:
     """
     Parse a serial line into ReplayObservation.
 
+    Accepts two formats:
+        - 4 fields: front,left,right,hazard (uses provided timestep or 0)
+        - 5 fields: timestep,front,left,right,hazard (uses timestep from line)
+
     Args:
-        line: Raw line from serial (format: front,left,right,hazard)
-        timestep: Current timestep counter
+        line: Raw line from serial
+        timestep: Fallback timestep for 4-field format (default 0)
 
     Returns:
         ReplayObservation if valid, None if malformed
@@ -39,18 +44,30 @@ def parse_line(line: str, timestep: int) -> Optional[ReplayObservation]:
         return None
 
     parts = line.split(',')
-    if len(parts) < 4:
-        return None
 
     try:
-        return ReplayObservation(
-            timestep=timestep,
-            front_dist=int(parts[0]),
-            left_dist=int(parts[1]),
-            right_dist=int(parts[2]),
-            hazard_hint=float(parts[3]),
-            scanned=False
-        )
+        if len(parts) >= 5:
+            # Format: timestep,front,left,right,hazard
+            return ReplayObservation(
+                timestep=int(parts[0]),
+                front_dist=int(parts[1]),
+                left_dist=int(parts[2]),
+                right_dist=int(parts[3]),
+                hazard_hint=float(parts[4]),
+                scanned=False
+            )
+        elif len(parts) >= 4:
+            # Format: front,left,right,hazard
+            return ReplayObservation(
+                timestep=timestep if timestep is not None else 0,
+                front_dist=int(parts[0]),
+                left_dist=int(parts[1]),
+                right_dist=int(parts[2]),
+                hazard_hint=float(parts[3]),
+                scanned=False
+            )
+        else:
+            return None
     except (ValueError, IndexError):
         return None
 
@@ -67,7 +84,9 @@ class SerialReplaySource:
             if result["decision"] == "DELAY":
                 break  # Stop on safety concern
 
-    Line format: front,left,right,hazard (no header)
+    Supported line formats (no header):
+        - front,left,right,hazard (4 fields, timestep auto-incremented)
+        - timestep,front,left,right,hazard (5 fields, timestep from line)
     """
 
     def __init__(self, port: str, baud: int = 115200, timeout: float = 1.0):
