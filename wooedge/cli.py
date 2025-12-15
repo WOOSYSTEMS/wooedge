@@ -6,6 +6,7 @@ Enhanced benchmark shows separation between uncertainty-aware and greedy planner
 """
 
 import argparse
+import os
 import sys
 import time
 from typing import List, Optional
@@ -1115,6 +1116,17 @@ def run_assistive_demo(args) -> None:
     print(f"{'='*60}")
 
 
+def run_replay_csv(args) -> None:
+    """Run CSV replay through safety checker."""
+    # Import the demo replay function
+    examples_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'examples')
+    sys.path.insert(0, examples_path)
+    from csv_replay_demo import run_replay
+
+    # Run replay
+    run_replay(args.file, delay=args.delay, verbose=not args.quiet)
+
+
 def main():
     """Main entry point for CLI."""
     parser = argparse.ArgumentParser(
@@ -1256,6 +1268,18 @@ Examples:
     assistive_parser.add_argument("--verbose", action="store_true",
                                   help="Show detailed episode output")
 
+    # CSV replay command
+    replay_parser = subparsers.add_parser("replay_csv",
+                                           help="Replay CSV sensor log through safety checker")
+    replay_parser.add_argument("--file", "-f", type=str,
+                               default=os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                                                    "examples", "data", "sample_nav_log.csv"),
+                               help="Path to CSV file")
+    replay_parser.add_argument("--delay", "-d", type=float, default=0.0,
+                               help="Delay between steps in seconds")
+    replay_parser.add_argument("--quiet", "-q", action="store_true",
+                               help="Minimal output (no reasons)")
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -1295,6 +1319,9 @@ Examples:
     elif args.command == "assistive_demo":
         # Run assistive navigation demo
         run_assistive_demo(args)
+    elif args.command == "replay_csv":
+        # Run CSV replay
+        run_replay_csv(args)
     else:
         parser.print_help()
 
