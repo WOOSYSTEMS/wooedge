@@ -1190,6 +1190,30 @@ def run_replay_serial(args) -> None:
     print("=" * 60)
 
 
+def run_trading_gate(args) -> None:
+    """Run trading gate demo on OHLCV data."""
+    # Import the demo module
+    examples_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'examples')
+    sys.path.insert(0, examples_path)
+    from trading_gate_demo import load_ohlcv, run_backtest
+
+    if not os.path.exists(args.file):
+        print(f"Error: File not found: {args.file}")
+        sys.exit(1)
+
+    candles = load_ohlcv(args.file)
+    print(f"Loaded {len(candles)} candles from {args.file}\n")
+
+    run_backtest(
+        candles,
+        hazard_threshold=args.hazard_thresh,
+        uncertainty_threshold=args.uncert_thresh,
+        max_drawdown=args.max_dd,
+        initial_equity=args.equity,
+        verbose=not args.quiet,
+    )
+
+
 def main():
     """Main entry point for CLI."""
     parser = argparse.ArgumentParser(
@@ -1355,6 +1379,24 @@ Examples:
     serial_parser.add_argument("--quiet", "-q", action="store_true",
                                help="Minimal output (no reasons)")
 
+    # Trading gate command
+    trading_parser = subparsers.add_parser("trading_gate",
+                                            help="Run trading decision gate demo on OHLCV data")
+    trading_parser.add_argument("--file", "-f", type=str,
+                                default=os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                                                     "examples", "data", "sample_ohlcv.csv"),
+                                help="Path to OHLCV CSV file")
+    trading_parser.add_argument("--hazard-thresh", type=float, default=0.6,
+                                help="Hazard threshold (default 0.6)")
+    trading_parser.add_argument("--uncert-thresh", type=float, default=0.8,
+                                help="Uncertainty threshold (default 0.8)")
+    trading_parser.add_argument("--max-dd", type=float, default=0.15,
+                                help="Max drawdown (default 0.15)")
+    trading_parser.add_argument("--equity", type=float, default=1000.0,
+                                help="Initial equity (default 1000)")
+    trading_parser.add_argument("--quiet", "-q", action="store_true",
+                                help="Minimal output")
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -1400,6 +1442,9 @@ Examples:
     elif args.command == "replay_serial":
         # Run serial replay
         run_replay_serial(args)
+    elif args.command == "trading_gate":
+        # Run trading gate demo
+        run_trading_gate(args)
     else:
         parser.print_help()
 

@@ -141,10 +141,20 @@ class TestSerialReplaySource:
         source.open()
 
         mock_serial_module.Serial.assert_called_once_with(
-            port="/dev/ttyUSB0",
-            baudrate=9600,
-            timeout=1.0
+            "/dev/ttyUSB0", 9600, timeout=1.0
         )
+
+    @patch('wooedge.io.serial_replay.serial')
+    def test_open_stores_handle(self, mock_serial_module):
+        """Test that open() stores the serial handle on self._ser."""
+        mock_serial = Mock()
+        mock_serial_module.Serial.return_value = mock_serial
+        mock_serial.is_open = True
+
+        source = SerialReplaySource("/dev/ttyUSB0")
+        assert source._ser is None
+        source.open()
+        assert source._ser is mock_serial
 
     @patch('wooedge.io.serial_replay.serial')
     def test_close_closes_connection(self, mock_serial_module):
@@ -259,10 +269,51 @@ class TestSerialReplaySource:
         source.open()
 
         mock_serial_module.Serial.assert_called_with(
-            port="/dev/ttyUSB0",
-            baudrate=115200,
-            timeout=1.0
+            "/dev/ttyUSB0", 115200, timeout=1.0
         )
+
+    @patch('wooedge.io.serial_replay.serial')
+    def test_read_one_timeout_returns_none(self, mock_serial_module):
+        """Test that read_one() returns None on timeout (empty bytes)."""
+        mock_serial = Mock()
+        mock_serial_module.Serial.return_value = mock_serial
+        mock_serial.is_open = True
+        mock_serial.readline.return_value = b""  # Timeout
+
+        source = SerialReplaySource("/dev/ttyUSB0")
+        obs = source.read_one()
+
+        assert obs is None
+        mock_serial.readline.assert_called_once()
+
+    @patch('wooedge.io.serial_replay.serial')
+    def test_iteration_yields_observations(self, mock_serial_module):
+        """Test that iteration yields observations as they arrive."""
+        mock_serial = Mock()
+        mock_serial_module.Serial.return_value = mock_serial
+        mock_serial.is_open = True
+        # Simulate: valid line, timeout, valid line
+        mock_serial.readline.side_effect = [
+            b"3,2,4,0.1\n",
+            b"",  # Timeout - should continue
+            b"5,4,3,0.2\n",
+        ]
+
+        source = SerialReplaySource("/dev/ttyUSB0")
+        source.open()
+
+        # Read observations directly
+        obs1 = source.read_one()
+        obs2 = source.read_one()  # Timeout, returns None
+        obs3 = source.read_one()
+
+        assert obs1 is not None
+        assert obs1.front_dist == 3
+        assert obs2 is None  # Timeout
+        assert obs3 is not None
+        assert obs3.front_dist == 5
+        # Verify handle was used
+        assert mock_serial.readline.call_count == 3
 
     @patch('wooedge.io.serial_replay.serial')
     def test_read_5field_format(self, mock_serial_module):

@@ -104,38 +104,41 @@ class SerialReplaySource:
         self.port = port
         self.baud = baud
         self.timeout = timeout
-        self._serial: Optional[serial.Serial] = None
+        self._ser = None  # Serial handle, created on open()
         self._timestep = 0
 
     def open(self) -> None:
-        """Open serial connection."""
-        if self._serial is not None and self._serial.is_open:
+        """Open serial connection and store handle."""
+        if self._ser is not None and self._ser.is_open:
             return
-        self._serial = serial.Serial(
-            port=self.port,
-            baudrate=self.baud,
-            timeout=self.timeout
-        )
+        self._ser = serial.Serial(self.port, self.baud, timeout=self.timeout)
         self._timestep = 0
 
     def close(self) -> None:
-        """Close serial connection."""
-        if self._serial is not None and self._serial.is_open:
-            self._serial.close()
-        self._serial = None
+        """Close serial connection safely."""
+        if self._ser is not None:
+            try:
+                if self._ser.is_open:
+                    self._ser.close()
+            except Exception:
+                pass  # Ignore errors on close
+            self._ser = None
 
     def read_one(self) -> Optional[ReplayObservation]:
         """
         Read and parse one observation from serial.
 
         Returns:
-            ReplayObservation if valid line received, None on timeout/error
+            ReplayObservation if valid line received, None on timeout/empty/error
         """
-        if self._serial is None or not self._serial.is_open:
+        if self._ser is None or not self._ser.is_open:
             self.open()
 
         try:
-            line = self._serial.readline().decode('utf-8', errors='ignore')
+            raw = self._ser.readline()
+            if not raw:  # Timeout returns b""
+                return None
+            line = raw.decode('utf-8', errors='ignore')
             obs = parse_line(line, self._timestep)
             if obs is not None:
                 self._timestep += 1
@@ -147,30 +150,33 @@ class SerialReplaySource:
         """
         Iterate over observations from serial port.
 
-        Yields observations until connection is closed or interrupted.
+        Yields observations as they arrive. Continues on timeout (empty read).
         Skips malformed lines silently.
         """
         self.open()
         try:
             while True:
+                if self._ser is None or not self._ser.is_open:
+                    break
                 obs = self.read_one()
                 if obs is not None:
                     yield obs
+                # On timeout (None), continue loop without blocking
         except KeyboardInterrupt:
             pass
         finally:
             self.close()
 
     def __enter__(self) -> "SerialReplaySource":
-        """Context manager entry."""
+        """Context manager entry - opens connection."""
         self.open()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Context manager exit."""
+        """Context manager exit - closes connection safely."""
         self.close()
 
     @property
     def is_open(self) -> bool:
         """Check if serial connection is open."""
-        return self._serial is not None and self._serial.is_open
+        return self._ser is not None and self._ser.is_open
